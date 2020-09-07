@@ -58,8 +58,6 @@ class Socks5Demon(socketserver.BaseRequestHandler):
         self.cl2sv = ''
         try:
             self.cl2sv = sender.TcpSender()
-        except AntSockServerRefusedConnection:
-            sys.exit(1)
         except Exception as e:
             logging.critical(str(e))
             sys.exit(1)

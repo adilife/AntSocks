@@ -16,9 +16,23 @@
 # under the License.
 
 
-class AntSockServerRefusedConnection(Exception):
+class AntSockServerConnectionRefused(Exception):
+    def __init__(self):
+        super().__init__(self)
+        self.err = 'AntSocks Server Connection Refused!'
+
     def __str__(self):
-        return 'AntSocks Server Connection Refused!'
+        return self.err
+
+
+class AntSockServerHandshakeRefused(Exception):
+    def __str__(self):
+        return 'AntSocks Server handshake refused!'
+
+
+class AntSockServerHandshakeError(Exception):
+    def __str__(self):
+        return 'AntSocks Server handshake error!'
 
 
 class Error(Exception):

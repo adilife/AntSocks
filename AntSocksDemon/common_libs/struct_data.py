@@ -18,18 +18,8 @@
 
 import struct
 
-STRUCT_FORMAT = '!16s16s'
+HEADER_STRUCT_FORMAT = '!16s16s'
 N_STRUCT_FORMAT = '!H'
-
-
-def pack_data(begin,identity):
-    s_struct = struct.Struct(STRUCT_FORMAT)
-    return s_struct.pack(begin, identity)
-
-
-def unpack_data(data):
-    s_struct = struct.Struct(STRUCT_FORMAT)
-    return s_struct.unpack(data)
 
 
 def pack_number(number):
@@ -40,4 +30,39 @@ def pack_number(number):
 def unpack_number(data):
     n_struct = struct.Struct(N_STRUCT_FORMAT)
     return n_struct.unpack(data)[0]
+
+
+def pack_header(leads, client_id):
+    s_struct = struct.Struct(HEADER_STRUCT_FORMAT)
+    if isinstance(client_id, str):
+        identity = client_id.encode('utf-8')[:16]
+    else:
+        identity = client_id[:16]
+    return s_struct.pack(leads, identity)
+
+
+def unpack_header(header):
+    s_struct = struct.Struct(HEADER_STRUCT_FORMAT)
+    leads, identity = s_struct.unpack(header)
+    return leads, identity
+
+
+def pack_iv(data, iv):
+    return data[:2] + iv + data[2:]
+
+
+def unpack_iv(header):
+    data = header[:2] + header[18:]
+    iv = header[2:18]
+    return iv, data
+
+
+def pack_body(data, tail):
+    return data + tail
+
+
+def unpack_body(body):
+    return body[:-4], body[-4:]
+
+
 

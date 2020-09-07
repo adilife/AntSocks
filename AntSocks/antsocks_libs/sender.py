@@ -42,16 +42,16 @@ ENCRYPT_KEY = conf_file.ENCRYPT_KEY
 
 class TcpSender(object):
     def __init__(self):
+        self.leads = 'AntComesLetsFigt'.encode('utf-8')
+        self.tail = 'Tail'.encode('utf-8')
         self.client_name = CLIENT_NAME
-        self.data = b''
         self.iv = b''
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.client.connect((TCP_SERVER_IP, TCP_SERVER_PORT))
         except socket.error:
             # Server connection refused
-            logging.critical('AntSocks Server Connection Refused!')
-            raise AntSockServerRefusedConnection
+            raise AntSockServerConnectionRefused
         self.server_id = ''
         self.__hand_shake()
 
@@ -64,20 +64,16 @@ class TcpSender(object):
     def close(self):
         self.client.close()
 
-    def __gen_header(self):
-        begin = 'AntComesLetsFigt'.encode('utf-8')
-        identity = self.client_name[:16].encode('utf-8')
-        return struct_data.pack_data(begin, identity)
-
     def __del__(self):
         self.close()
 
     def send_data(self, data):  # data type bytes
         o_length = len(data)
-        data = encrypt_data.encrypt_bin(data, ENCRYPT_KEY, self.iv)
-        length = struct_data.pack_number(len(data))
-        data = length + data
-        self.client.sendall(data)
+        body = struct_data.pack_body(data, self.tail)
+        encrypted_body = encrypt_data.encrypt_bin(body, ENCRYPT_KEY, self.iv)
+        length = struct_data.pack_number(len(encrypted_body))
+        chunk = length + encrypted_body
+        self.client.sendall(chunk)
         return o_length
 
     def receive_data(self):
@@ -114,33 +110,54 @@ class TcpSender(object):
         except OSError:
             self.client.close()
             return b''
-        data = bytes(data)
-        data = encrypt_data.decrypt_bin(data, ENCRYPT_KEY, self.iv)
-        self.data = data
-        return data
-
-    def __pack_iv(self, data):
-        return data[:2] + self.iv + data[2:]
+        encrypted_body = bytes(data)
+        body = encrypt_data.decrypt_bin(encrypted_body, ENCRYPT_KEY, self.iv)
+        origin_data, tail = struct_data.unpack_body(body)
+        if self.tail != tail:
+            self.client.close()
+            return b''
+        return origin_data
 
     def __hand_shake(self):
         # Send handshake to server, include client_id and AES iv, 64 bits
         bs = 16  # AES.block_size is 16 by default
         self.iv = Random.new().read(bs)
-        header = str(base64.encodebytes(self.__gen_header()), encoding='utf-8')
+        header = str(base64.encodebytes(struct_data.pack_header(self.leads, self.client_name)), encoding='utf-8')
         encrypt_header = encrypt_data.encrypt(header, ENCRYPT_KEY, self.iv)
-        data = self.__pack_iv(encrypt_header)
+        data = struct_data.pack_iv(encrypt_header, self.iv)
         self.client.sendall(data)
 
         # Recive handshake reply from server, include server_id
-        header = self.client.recv(48)
+        length = 48
+        # header = self.client.recv(48)
+        try:
+            header = bytearray(length)
+            view = memoryview(header)
+            self.client.settimeout(1)
+            while length > 0:
+                nbytes = self.client.recv_into(view, length)
+                if nbytes == 0:
+                    header = b''
+                    break
+                view = view[nbytes:]
+                length -= nbytes
+        except ConnectionResetError:
+            header = b''
+        except OSError:
+            header = b''
+
         if not header:
-            logging.critical('AntSocks Server handshake refused!')
-            sys.exit(1)
-        header = encrypt_data.decrypt(header, ENCRYPT_KEY, self.iv)
+            self.client.close()
+            raise AntSockServerHandshakeRefused
+        header = encrypt_data.decrypt(bytes(header), ENCRYPT_KEY, self.iv)
         header = base64.decodebytes(header.encode(encoding='utf-8'))
-        header = struct_data.unpack_data(header)
-        self.server_id = str(header[1].decode('utf-8')).strip(b'\x00'.decode('utf-8'))
+        header = struct_data.unpack_header(header)
+        if self.leads != header[0]:
+            self.client.close()
+            raise AntSockServerHandshakeError
+        self.server_id = self.__get_id(header[1])
         # print('Connected to server {}.'.format(self.server_id))
 
-
-
+    @staticmethod
+    def __get_id(data):
+        return str(data.decode('utf-8')).strip(b'\x00'.decode('utf-8'))

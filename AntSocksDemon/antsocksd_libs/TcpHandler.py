@@ -43,6 +43,8 @@ class AntTcpHandler(socketserver.BaseRequestHandler):
     timeout = None
 
     def __init__(self, request, client_address, server):
+        self.leads = 'AntComesLetsFigt'.encode('utf-8')
+        self.tail = 'Tail'.encode('utf-8')
         self.client_id = ''
         self.data = b''
         self.iv = ''
@@ -134,21 +136,41 @@ class AntTcpHandler(socketserver.BaseRequestHandler):
 
     def __hand_shake(self):
         # receive handshake from client, get client_id and iv
-        header = self.request.recv(64)
+        length = 64
+        # header = self.request.recv(64)
+        try:
+            header = bytearray(length)
+            view = memoryview(header)
+            self.request.settimeout(1)
+            while length > 0:
+                nbytes = self.request.recv_into(view, length)
+                if nbytes == 0:
+                    header = b''
+                    break
+                view = view[nbytes:]
+                length -= nbytes
+        except ConnectionResetError:
+            header = b''
+        except OSError:
+            header = b''
+
         if not header:
             # cur_time = get_cur_time()
             # print(cur_time, self.client_address, "HandShake Failed, 连接断开!")
             self.request.close()
             self.remote.close()
             return
-        self.iv, header = self.__unpack_iv(header)
+        self.iv, header = struct_data.unpack_iv(bytes(header))
         header = encrypt_data.decrypt(header, ENCRYPT_KEY, self.iv)
         header = base64.decodebytes(header.encode(encoding='utf-8'))
-        header = struct_data.unpack_data(header)
-        self.client_id = header[1].decode('utf-8').strip(b'\x00'.decode('utf-8'))
-
+        header = struct_data.unpack_header(header)
+        if self.leads != header[0]:  # check encrypted leads
+            self.request.close()
+            self.remote.close()
+            return
+        self.client_id = self.__get_id(header[1])
         # agree client handshake, send replay include server_id, 48 bits
-        header = str(base64.encodebytes(self.__gen_header()), encoding='utf-8')
+        header = str(base64.encodebytes(struct_data.pack_header(self.leads, SERVER_NAME)), encoding='utf-8')
         header = encrypt_data.encrypt(header, ENCRYPT_KEY, self.iv)
         self.request.sendall(header)
 
@@ -156,16 +178,8 @@ class AntTcpHandler(socketserver.BaseRequestHandler):
         # self.request.close()
 
     @staticmethod
-    def __gen_header():
-        begin = 'AntComesLetsFigt'.encode('utf-8')
-        identity = SERVER_NAME[:16].encode('utf-8')
-        return struct_data.pack_data(begin, identity)
-
-    @staticmethod
-    def __unpack_iv(header):
-        data = header[:2] + header[18:]
-        iv = header[2:18]
-        return iv, data
+    def __get_id(data):
+        return str(data.decode('utf-8')).strip(b'\x00'.decode('utf-8'))
 
     def receive_cl(self):
         """
@@ -206,11 +220,13 @@ class AntTcpHandler(socketserver.BaseRequestHandler):
         except OSError:
             self.request.close()
             return b''
-
-        data = bytes(data)
-        data = encrypt_data.decrypt_bin(data, ENCRYPT_KEY, self.iv)
-        self.data = data
-        return data
+        encrypted_body = bytes(data)
+        body = encrypt_data.decrypt_bin(encrypted_body, ENCRYPT_KEY, self.iv)
+        origin_data, tail = struct_data.unpack_body(body)
+        if self.tail != tail:
+            self.request.close()
+            return b''
+        return origin_data
 
     def reply_cl(self, data):
         """
@@ -219,11 +235,14 @@ class AntTcpHandler(socketserver.BaseRequestHandler):
         :return:
         """
         o_length = len(data)
-        data = encrypt_data.encrypt_bin(data, ENCRYPT_KEY, self.iv)
-        length = struct_data.pack_number(len(data))
-        data = length + data
-        self.request.sendall(data)
+        body = struct_data.pack_body(data, self.tail)
+        encrypted_body = encrypt_data.encrypt_bin(body, ENCRYPT_KEY, self.iv)
+        length = struct_data.pack_number(len(encrypted_body))
+        chunk = length + encrypted_body
+        self.request.sendall(chunk)
         return o_length
+
+
 
     def close(self):
         self.request.close()
