@@ -1,10 +1,7 @@
-AntSocks.
+AntSocks(for study only)
 
   A simple sockes5 proxy. Include a server and a client. The Client is the local proxy server for browsers or apps. The server is the outer-world's gate deploy on anywhere.
-  The network traffic beteen server and client is encrypted by AES. The secret key is pre-defined in .conf file(See in .conf file issues). The secret iv is random generated in every client-server handshake. So it could be more difficult to be cracked(Or be monitored :-)).
-  You can download AntSockes.tar.gz simplely.
-
-By Ozward Wang <adilife@163.com>
+  The network traffic beteen server and client is encrypted by AES. The secret key is pre-defined in .conf file(See in .conf file issues). The secret iv is random generated in every client-server handshake. .
 
 ------------------------------
 Package needed:
