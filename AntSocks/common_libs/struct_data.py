@@ -32,12 +32,12 @@ def unpack_number(data):
     return n_struct.unpack(data)[0]
 
 
-def pack_header(leads, client_id):
+def pack_header(leads, identity):
     s_struct = struct.Struct(HEADER_STRUCT_FORMAT)
-    if isinstance(client_id, str):
-        identity = client_id.encode('utf-8')[:16]
+    if isinstance(identity, str):
+        identity = identity.encode('utf-8')[:16]
     else:
-        identity = client_id[:16]
+        identity = identity[:16]
     return s_struct.pack(leads, identity)
 
 
